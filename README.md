@@ -39,3 +39,5 @@ python encode.py "path/to/CS5185_Project_Video_Dataset" --output "runs/compariso
 ```
 
 报告与展示中应注明课程数据集和素材来源。数据集的 `licenses/` 目录提供各视频的原始署名资料。
+
+A 部分的报告段落和汇报稿见 [MEMBER_A.md](MEMBER_A.md)。
