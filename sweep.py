@@ -6,6 +6,7 @@ run ``environment.json``.  Every candidate encoding is cached on disk and reused
 when the sweep is resumed.
 """
 import argparse
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -48,29 +49,54 @@ def record_environment():
         'cache_policy': 'SHA256 source + feature version; cold extraction and warm lookup reported separately'})
 
 
+def file_digest(path):
+    with path.open('rb') as stream:
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+        return digest.hexdigest()
+
+
 def experiment(source, percent, preset, aq, split):
     """Encode one (source, rate, fixed settings) candidate and measure quality."""
     directory = RUN / split / f'{preset}-aq{aq}' / str(percent)
     directory.mkdir(parents=True, exist_ok=True)
     record_path = directory / f'{source.stem}.json'
-    if record_path.exists():
-        record = json.loads(record_path.read_text(encoding='utf-8'))
-        if record['status'] == 'ok' and 'quality' in record:
+    options = args()
+    output = directory / f'{source.stem}.mp4'
+    identity = {
+        'source_sha256': file_digest(source), 'percent': percent, 'preset': preset, 'aq': aq,
+        'options': vars(options),
+        'tool_versions': [encode.run([tool, '-version']).splitlines()[0]
+                          for tool in (options.ffmpeg, options.ffprobe)],
+        'implementation': [file_digest(Path(module.__file__)) for module in (encode, quality)],
+        'packages': {p: importlib.metadata.version(p) for p in ('numpy', 'torch', 'pytorch-msssim')},
+    }
+    if record_path.is_file():
+        try:
+            record = json.loads(record_path.read_text(encoding='utf-8'))
+        except (UnicodeError, json.JSONDecodeError):
+            record = None
+        if (isinstance(record, dict) and record.get('status') == 'ok' and 'quality' in record
+                and record.get('identity') == identity and record.get('output') == str(output)
+                and output.is_file() and record.get('output_sha256') == file_digest(output)):
             return record
     started = perf_counter()
-    record = encode.encode_job(args(), source, percent, 'candidate',
+    record = encode.encode_job(options, source, percent, 'candidate',
                                lambda *unused: {'preset': preset, 'aq_mode': aq}, None, directory)
     write(record_path, record)
     if record['status'] != 'ok':
         raise RuntimeError(record.get('error'))
     metric_started = perf_counter()
-    record['quality'] = quality.evaluate(source, Path(record['output']))
+    record['quality'] = quality.evaluate(source, output, ffmpeg=options.ffmpeg, ffprobe=options.ffprobe)
+    record['identity'] = identity
+    record['output_sha256'] = file_digest(output)
     record['eval_s'] = perf_counter() - metric_started
     record['validation_total_s'] = perf_counter() - started
     record['encode_s'] = sum(a.get('encode_s', 0) for a in record['attempts'])
     write(record_path, record)
     print(f'{split} {source.stem} {percent}% {preset}/AQ{aq}: '
-          f'PSNR={record["quality"]["psnr_y_db"]:.3f}, MS={record["quality"]["ms_ssim"]:.6f}, '
+          f'PSNR={float(record["quality"]["psnr_y_db"]):.3f}, MS={record["quality"]["ms_ssim"]:.6f}, '
           f'encode={record["encode_s"]:.2f}s', flush=True)
     return record
 

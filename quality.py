@@ -13,29 +13,28 @@ import torch
 from pytorch_msssim import ms_ssim
 import encode
 
-ROOT = Path(__file__).resolve().parent
-FFMPEG = os.environ.get('CS5185_FFMPEG', str(ROOT.parent / 'ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe'))
-FFPROBE = os.environ.get('CS5185_FFPROBE', str(Path(FFMPEG).with_name('ffprobe.exe')))
+FFMPEG = os.environ.get('CS5185_FFMPEG', 'ffmpeg')
+FFPROBE = os.environ.get('CS5185_FFPROBE', 'ffprobe')
 torch.set_num_threads(2)
 
 
-def luma(path, width, height):
+def luma(path, width, height, ffmpeg):
     # Decode the Y plane directly; do not convert limited-range Y to full-range RGB.
-    result = subprocess.run([FFMPEG, '-v', 'error', '-i', str(path), '-map', '0:v:0',
+    result = subprocess.run([ffmpeg, '-v', 'error', '-i', str(path), '-map', '0:v:0',
         '-vf', 'extractplanes=y', '-pix_fmt', 'gray', '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], capture_output=True)
     if result.returncode:
         raise RuntimeError(result.stderr.decode(errors='replace'))
     return np.frombuffer(result.stdout, dtype=np.uint8).reshape(-1, height, width)
 
 
-def evaluate(source, encoded):
-    meta, duration, times = encode.probe(FFPROBE, Path(source))
-    other, other_duration, other_times = encode.probe(FFPROBE, Path(encoded))
+def evaluate(source, encoded, *, ffmpeg=FFMPEG, ffprobe=FFPROBE):
+    meta, duration, times = encode.probe(ffprobe, Path(source))
+    other, other_duration, other_times = encode.probe(ffprobe, Path(encoded))
     if any(meta[k] != other[k] for k in ['width', 'height', 'frames', 'fps']) or abs(duration-other_duration) > .001:
         raise ValueError('Reference/output geometry or duration mismatch')
     if any(abs((a-times[0])-(b-other_times[0])) > .001 for a,b in zip(times,other_times)):
         raise ValueError('Reference/output timestamps mismatch')
-    ref, out = (luma(p, meta['width'], meta['height']) for p in [source, encoded])
+    ref, out = (luma(p, meta['width'], meta['height'], ffmpeg) for p in [source, encoded])
     if ref.shape != out.shape or len(ref) != meta['frames']:
         raise ValueError('Decoded frame count mismatch')
     squared_error, scores = 0., []

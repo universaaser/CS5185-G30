@@ -6,6 +6,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import shutil
+import subprocess
+import sys
+
+import sweep
 
 import encode
 import features
@@ -35,6 +39,59 @@ class BChecks(unittest.TestCase):
                     '-c:v','libx264','-threads','2',str(short)])
         with self.assertRaisesRegex(ValueError,'mismatch'):
             quality.evaluate(self.video,short)
+
+    def test_cli_evaluator_tool_resolution(self):
+        source = self.root / 'cli.mp4'
+        shutil.copyfile(self.video, source)
+        # Leave sufficient byte budget for both CLI rates on this six-frame clip.
+        with source.open('ab') as stream:
+            stream.write(bytes(4_000_000))
+        env = os.environ.copy()
+        for key in ('CS5185_FFMPEG', 'CS5185_FFPROBE'):
+            env.pop(key, None)
+        for mode in ('path', 'explicit'):
+            output = self.root / mode
+            command = [sys.executable, encode.__file__, str(source), '--output', str(output),
+                       '--evaluator', 'quality:evaluate']
+            if mode == 'explicit':
+                for tool in ('ffmpeg', 'ffprobe'):
+                    env['CS5185_' + tool.upper()] = 'missing-tool'
+                    command.extend(['--' + tool, shutil.which(tool)])
+            run = subprocess.run(command, env=env, capture_output=True, text=True)
+            jobs = output / 'jobs.jsonl'
+            self.assertEqual(run.returncode, 0, jobs.read_text() if jobs.exists() else run.stderr)
+            records = [json.loads(line) for line in jobs.read_text().splitlines()]
+            self.assertEqual([r['quality']['frames'] for r in records], [6, 6])
+
+    def test_experiment_revalidates_cached_artifacts(self):
+        source = self.root / 'resume.mp4'
+        shutil.copyfile(self.video, source)
+        with patch.object(sweep, 'RUN', self.root / 'run'), patch.object(
+                encode, 'encode_job', wraps=encode.encode_job) as encoder:
+            def run():
+                return sweep.experiment(source, 100, 'fast', 1, 'development')
+
+            record = run()
+            output = Path(record['output'])
+            self.assertEqual(run(), record)
+            self.assertEqual(encoder.call_count, 1)
+            output.unlink()
+            run()
+            with output.open('ab') as stream:
+                stream.write(b'damaged')
+            run()
+            with source.open('ab') as stream:
+                stream.write(b'changed source')
+            self.assertNotEqual(run()['identity'], record['identity'])
+            path = output.with_suffix('.json')
+            record = json.loads(path.read_text())
+            record.pop('identity')
+            path.write_text(json.dumps(record))
+            run()
+            with patch.object(sweep, 'args', return_value=sweep.args()) as settings:
+                settings.return_value.threads = 1
+                run()
+            self.assertEqual(encoder.call_count, 6)
 
     def test_budget_endpoints_and_fallback(self):
         rules={'budget_bpp_range':[.07,.28],

@@ -1,6 +1,7 @@
 """Batch H.264 encoding for the CS5185 video dataset."""
 import argparse
 from fractions import Fraction
+from functools import partial
 import importlib
 import json
 import os
@@ -168,8 +169,8 @@ def main():
     parser.add_argument("--evaluator", help="Quality evaluation hook, module:function")
     parser.add_argument("--attempts", type=int, choices=range(1, 5), default=3)
     parser.add_argument("--threads", type=int, default=2)
-    parser.add_argument("--ffmpeg", default="ffmpeg")
-    parser.add_argument("--ffprobe", default="ffprobe")
+    parser.add_argument("--ffmpeg", default=os.environ.get("CS5185_FFMPEG", "ffmpeg"))
+    parser.add_argument("--ffprobe", default=os.environ.get("CS5185_FFPROBE", "ffprobe"))
     args = parser.parse_args()
     if args.threads < 1:
         parser.error("--threads must be positive")
@@ -183,6 +184,8 @@ def main():
     try:
         selector = load_hook(args.selector) if args.mode != "baseline" else None
         evaluator = load_hook(args.evaluator) if args.evaluator else None
+        if args.evaluator == "quality:evaluate":
+            evaluator = partial(evaluator, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe)
         ffmpeg_version = run([args.ffmpeg, "-version"]).splitlines()[0]
         ffprobe_version = run([args.ffprobe, "-version"]).splitlines()[0]
         encoders = run([args.ffmpeg, "-hide_banner", "-encoders"])
