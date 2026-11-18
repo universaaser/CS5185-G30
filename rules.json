@@ -1,0 +1,39 @@
+{
+  "tree": {
+    "feature": 2,
+    "threshold": 0.15612320601851853,
+    "left": {
+      "preset": "fast",
+      "aq_mode": 2,
+      "reason": "Best feasible development leaf",
+      "training_videos": 3
+    },
+    "right": {
+      "preset": "fast",
+      "aq_mode": 1,
+      "reason": "Best feasible development leaf",
+      "training_videos": 3
+    }
+  },
+  "budget_bpp_range": [
+    0.07395827546296296,
+    0.2876322337962963
+  ],
+  "version": "frozen",
+  "feature_names": [
+    "motion_mean",
+    "motion_p90",
+    "edge_mean",
+    "cut_fraction",
+    "budget_bpp"
+  ],
+  "feature_version": "gray320",
+  "selected_depth": 1,
+  "validation": {
+    "depth": 1,
+    "mean_ms_gain": 0.00018953909476598918,
+    "worst_psnr_delta": -0.07910076983638703,
+    "encode_ratio": 0.833144089554331
+  },
+  "development_sha256": "549616db1205aca148c3a9e899f2a47573c9d1430ed832da384c4bfaa854fa20"
+}
