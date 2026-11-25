@@ -4,8 +4,8 @@
 
 | 成员 | 工作 | 交付物 |
 | --- | --- | --- |
-| A（本分支） | 编码与集成。读取元数据，计算 5% / 2% 文件预算，运行统一基线和自适应入口，执行 FFmpeg x264 两遍编码、超预算重试和播放完整性验证。最终与 B、C 联调。 | 编码 CLI、运行说明、编码与重试日志、报告中的系统流程与反馈调整、对应汇报内容。 |
-| B | 内容特征与选参。计算帧差和边缘密度，绘制时间曲线，在开发集比较参数并冻结规则。 | 选参模块、配置、曲线、一个片段的选参解释、报告中的特征和策略。 |
+| A | 编码与集成。读取元数据，计算 5% / 2% 文件预算，运行统一基线和自适应入口，执行 FFmpeg x264 两遍编码、超预算重试和播放完整性验证。最终与 B、C 联调。 | 编码 CLI、运行说明、编码与重试日志、报告中的系统流程与反馈调整、对应汇报内容。 |
+| B（本分支） | 内容特征与选参。计算帧差和边缘密度，绘制时间曲线，在开发集比较参数并冻结规则。 | 选参模块、配置、曲线、一个片段的选参解释、报告中的特征和策略。 |
 | C | 画质与实验。用原片对齐评估 PSNR 和 MS-SSIM，分析两档的基线与自适应结果，组织主观看片。 | 评估模块、实验表、对比截图或短片，汇总三人的报告 PDF 和约 5–6 页幻灯片。 |
 
 开发集为 01、02、03、04、07、08，最后测试保留 05、06、09、10。11、12 在策略冻结后作为补充案例运行。最终运行 12 段视频各两档，详细展示至少 3 段。三人一起核对产出，一位组员提交含代码、报告 PDF、实验结果、幻灯片的 ZIP。
@@ -25,6 +25,24 @@ python encode.py "path/to/01_FourPeople.mp4" --output "runs/smoke"
 
 输出位于 `<run>/<method>/<5|2>/<video>.mp4`。`run.json` 记录工具版本和运行设置，`jobs.jsonl` 每行记录一个任务，包含预算、尝试参数和命令、大小、时间、调整原因、输出路径及失败原因。实际视频码率按视频包字节数计算，文件码率包括容器开销。存在失败任务时程序仍处理其余任务，最终退出码为 1。
 
+## 复现 B 部分实验
+
+在仓库根目录打开 PowerShell。将示例数据路径替换为直接包含 12 个课程 MP4 的目录，确保同一套 FFmpeg 和 ffprobe 可在终端运行。
+
+```powershell
+$env:CS5185_DATA = (Resolve-Path 'D:/data/CS5185_Project_Video_Dataset').Path
+$env:CS5185_FFMPEG = (Get-Command ffmpeg).Source
+$env:CS5185_FFPROBE = (Get-Command ffprobe).Source
+python -m pip install -r requirements.txt
+python -m unittest tests -v
+python sweep.py
+python fit.py
+python compare.py
+python report.py
+```
+
+每步成功后再执行下一步。`sweep.py` 在开发集扫描候选参数，`fit.py` 按视频留一验证并更新根目录的 `rules.json`。后两步比较三种编码方法，生成逐任务结果和同帧截图，汇总见 `runs/regression/REPORT.md`。如需直接使用随仓库提供的冻结规则，可跳过扫描和拟合，直接运行比较与汇总。更换输入、代码或编码环境后，请将 `CS5185_RUN` 指向新的实验目录。
+
 ## B、C 的集成接口
 
 把两个模块放在仓库根目录，或放在 Python 可导入的路径下。模块名由命令行指定。
@@ -41,3 +59,4 @@ python encode.py "path/to/CS5185_Project_Video_Dataset" --output "runs/compariso
 报告与展示中应注明课程数据集和素材来源。数据集的 `licenses/` 目录提供各视频的原始署名资料。
 
 A 部分的报告段落和汇报稿见 [MEMBER_A.md](MEMBER_A.md)。
+B 部分的实验报告与片段分析见 [MEMBER_B.md](MEMBER_B.md)。
